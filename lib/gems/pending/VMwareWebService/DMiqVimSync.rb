@@ -20,7 +20,15 @@ module DMiqVimSync
 end # module DMiqVimSync
 
 class DRb::DRbMessage
-  alias_method :dump_original, :dump
+  def dump_raw
+    obj = make_proxy(obj, error) if obj.kind_of? DRbUndumped                                          
+    begin                                                                                             
+      str = Marshal::dump(obj)                                                                        
+    rescue                                                                                            
+      str = Marshal::dump(make_proxy(obj, error))                                                     
+    end                                                                                               
+    [str.size].pack('N') + str                                                                        
+  end
 
   #
   # This is the DRB half of the dupObj locking scheme. If we get a MiqDrbReturn object,
@@ -32,9 +40,9 @@ class DRb::DRbMessage
     #
     obj.holdBrokerObj if obj.respond_to?(:holdBrokerObj)
 
-    return(dump_original(obj, error)) unless obj.kind_of?(MiqDrbReturn)
+    return(dump_raw(obj, error)) unless obj.kind_of?(MiqDrbReturn)
     begin
-      return(dump_original(obj.obj, error))
+      return(dump_raw(obj.obj, error))
     ensure
       if obj.lock && obj.lock.sync_locked?
         $vim_log.debug "DRb::DRbMessage.dump: UNLOCKING [#{Thread.current.object_id}] <#{obj.obj.object_id}>" if $vim_log.debug?
