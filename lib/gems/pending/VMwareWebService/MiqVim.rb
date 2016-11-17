@@ -18,7 +18,7 @@ class MiqVim < MiqVimInventory
   include MiqVimVdlConnectionMod
   include MiqPbmInventory
 
-  def initialize(server, username, password, cacheScope = nil)
+  def initialize(server, username, password, cacheScope = nil, opts = {})
     super
 
     pbm_initialize(self)

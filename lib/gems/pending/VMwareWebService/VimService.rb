@@ -6,13 +6,16 @@ class VimService < Handsoap::Service
 
   Handsoap.http_driver = :HTTPClient
 
-  def initialize(ep)
-    super
+  def initialize(ep, opts = {})
+    super(ep)
 
     setNameSpace('urn:vim25')
 
     @serviceInstanceMor = VimString.new("ServiceInstance", "ServiceInstance")
     @session_cookie     = nil
+
+    # Should we run GC.start every API after clearning the xml object
+    @force_gc = opts[:force_gc] || true
 
     @sic = retrieveServiceContent
 
@@ -1256,9 +1259,10 @@ class VimService < Handsoap::Service
     # At this point we don't need the internal raw XML content since we
     #   have the parsed XML document, so we can free it for the GC.
     response.instance_variable_set(:@http_body, nil)
+
     # Force a GC, because Ruby's GC is triggered on number of objects without
     #   regard to size.  The object we just freed may not be released right away.
-    GC.start
+    GC.start if @force_gc
 
     search_path = "//n1:#{rType}"
     node = doc.xpath(search_path, @ns).first

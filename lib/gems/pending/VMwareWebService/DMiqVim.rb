@@ -25,8 +25,8 @@ class DMiqVim < MiqVim
 
   attr_reader :updateThread
 
-  def initialize(server, username, password, broker, preLoad = false, debugUpdates = false, notifyMethod = nil, cacheScope = nil, maxWait = 60, maxObjects = 250)
-    super(server, username, password, cacheScope)
+  def initialize(server, username, password, broker, preLoad = false, debugUpdates = false, notifyMethod = nil, cacheScope = nil, maxWait = 60, maxObjects = 250, forceGC = true)
+    super(server, username, password, cacheScope, :force_gc => forceGC)
 
     log_prefix        = "DMiqVim.initialize (#{@connId})"
     @broker         = broker

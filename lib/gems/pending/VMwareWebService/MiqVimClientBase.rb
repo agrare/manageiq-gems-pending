@@ -10,7 +10,7 @@ class MiqVimClientBase < VimService
 
   attr_reader :server, :username, :password, :connId
 
-  def initialize(server, username, password)
+  def initialize(server, username, password, opts = {})
     @server   = server
     @username = username
     @password = password
@@ -27,7 +27,9 @@ class MiqVimClientBase < VimService
     on_log_header { |msg| $vim_log.info msg }
     on_log_body   { |msg| $vim_log.debug msg } if $miq_wiredump
 
-    super(:uri => sdk_uri, :version => 1)
+    endpoint = {:uri => sdk_uri, :version => 1}
+
+    super endpoint, opts
 
     @connected  = false
     @connLock = Sync.new
