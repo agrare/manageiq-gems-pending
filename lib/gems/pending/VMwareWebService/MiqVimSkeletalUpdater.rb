@@ -244,16 +244,14 @@ class MiqVimSkeletalUpdater < MiqVimClientBase
   def updateObject(objUpdate)
     log_prefix = "#{self.class.name}.updateObject"
 
-    case objUpdate.kind
-    when 'enter'
-      yield(objUpdate.obj, propUpdate(objUpdate.changeSet))
-    when 'leave'
-      yield(objUpdate.obj, nil)
-    when 'modify'
-      yield(objUpdate.obj, propUpdate(objUpdate.changeSet))
-    else
+    unless ['enter', 'modify', 'leave'].include? objUpdate.kind
       $vim_log.warn "#{log_prefix}: unrecognized operation: #{objUpdate.kind}"
+      return
     end
+
+    changedProps = propUpdate(objUpdate.changeSet) if objUpdate.keys.include? 'changeSet'
+
+    yield objUpdate.kind, objUpdate.obj, changedProps
   end
 
   def propUpdate(changeSet)
