@@ -572,7 +572,8 @@ module VimPropMaps
   VimSkeletalPropMap = {
     :ManagedEntity => {
       :props => [
-        "name"
+        "name",
+        "parent"
       ]
     }
   }
