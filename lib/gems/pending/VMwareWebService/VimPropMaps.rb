@@ -575,6 +575,12 @@ module VimPropMaps
         "name",
         "parent"
       ]
+    },
+    :VirtualMachine => {
+      :props => [
+        "config.template",
+        "runtime.powerState"
+      ]
     }
   }
 
