@@ -25,12 +25,6 @@ class MiqVimSkeletalUpdater < MiqVimClientBase
     @alive = true
   end
 
-  def addProperty(key, property)
-    return if (pm = @propMap[key]).nil?
-    property.split('.').each { |p| return if pm.include?(p) }
-    @propMap[key][:props] << property
-  end
-
   def updateSpec
     VimHash.new("PropertyFilterSpec") do |pfs|
       pfs.propSet = VimArray.new("ArrayOfPropertySpec") do |psa|
