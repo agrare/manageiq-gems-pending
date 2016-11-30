@@ -579,6 +579,8 @@ module VimPropMaps
     :VirtualMachine => {
       :props => [
         "config.template",
+        "summary.config.uuid",
+        "summary.config.vmPathName",
         "runtime.powerState"
       ]
     }
