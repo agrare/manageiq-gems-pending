@@ -576,6 +576,11 @@ module VimPropMaps
         "parent"
       ]
     },
+    :HostSystem => {
+      :props => [
+        "summary.config.product.vendor",
+      ]
+    },
     :VirtualMachine => {
       :props => [
         "config.template",
