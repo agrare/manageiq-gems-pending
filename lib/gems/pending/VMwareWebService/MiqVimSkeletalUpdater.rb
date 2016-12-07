@@ -59,9 +59,12 @@ class MiqVimSkeletalUpdater < MiqVimClientBase
       version = nil
 
       while @monitor
-        updates_version = doUpdate(version, @maxWait, &block)
+        updates, updates_version = doUpdate(version, @maxWait)
         next if updates_version.nil?
         version = updates_version
+
+        yield updates
+
         sleep @updateDelay if @updateDelay
       end # while @monitor
     rescue SignalException => err
@@ -93,31 +96,37 @@ class MiqVimSkeletalUpdater < MiqVimClientBase
 
   def doUpdate(version, max_wait, &block)
     log_prefix = "#{self.class.name}.doUpdate"
-    begin
-      $vim_log.info "#{log_prefix}: call to waitForUpdates...Starting" if $vim_log
-      updateSet = waitForUpdatesEx(@umPropCol, version, :max_wait => max_wait)
-      $vim_log.info "#{log_prefix}: call to waitForUpdates...Complete" if $vim_log
-      return version if updateSet.nil?
 
-      version = updateSet.version
+    truncated = true
+    updates   = []
 
-      return if updateSet.filterSet.nil? || updateSet.filterSet.empty?
+    while truncated
+      begin
+        $vim_log.info "#{log_prefix}: call to waitForUpdates...Starting" if $vim_log
+        updateSet = waitForUpdatesEx(@umPropCol, version, :max_wait => max_wait)
+        $vim_log.info "#{log_prefix}: call to waitForUpdates...Complete" if $vim_log
+        return version if updateSet.nil? || updateSet.filterSet.nil? || updateSet.filterSet.empty?
 
-      updateSet.filterSet.each do |fu|
-        next if fu.filter != @filterSpecRef
-        fu.objectSet.each do |objUpdate|
-          updateObject(objUpdate, &block)
-        end
-      end # updateSet.filterSet.each
-      # Help out the Ruby Garbage Collector by resetting variables pointing to large objects back to nil
-      updateSet = nil
-      return version
-    rescue HTTPClient::ReceiveTimeoutError => terr
-      $vim_log.info "#{log_prefix}: call to waitForUpdates...Timeout" if $vim_log
-      retry if isAlive?
-      $vim_log.warn "#{log_prefix}: connection lost"
-      raise terr
+        version   = updateSet.version
+        truncated = updateSet.truncated
+
+        updateSet.filterSet.each do |fu|
+          next if fu.filter != @filterSpecRef
+          fu.objectSet.each do |objUpdate|
+            updates << updateObject(objUpdate)
+          end
+        end # updateSet.filterSet.each
+        # Help out the Ruby Garbage Collector by resetting variables pointing to large objects back to nil
+        updateSet = nil
+      rescue HTTPClient::ReceiveTimeoutError => terr
+        $vim_log.info "#{log_prefix}: call to waitForUpdates...Timeout" if $vim_log
+        retry if isAlive?
+        $vim_log.warn "#{log_prefix}: connection lost"
+        raise terr
+      end
     end
+
+    return updates, version
   end
 
   def updateObject(objUpdate)
@@ -130,7 +139,7 @@ class MiqVimSkeletalUpdater < MiqVimClientBase
 
     changedProps = propUpdate(objUpdate.changeSet) if objUpdate.keys.include? 'changeSet'
 
-    yield objUpdate.kind, objUpdate.obj, changedProps
+    return objUpdate.kind, objUpdate.obj, changedProps
   end
 
   def propUpdate(changeSet)
