@@ -576,6 +576,11 @@ module VimPropMaps
         "parent"
       ]
     },
+    :Datastore  => {
+      :props => [
+        "summary.url"
+      ]
+    },
     :HostSystem => {
       :props => [
         "summary.config.product.vendor",
@@ -583,10 +588,11 @@ module VimPropMaps
     },
     :VirtualMachine => {
       :props => [
-        "config.template",
+        "summary.config.template",
         "summary.config.uuid",
         "summary.config.vmPathName",
-        "runtime.powerState"
+        "summary.runtime.host",
+        "summary.runtime.powerState"
       ]
     }
   }
