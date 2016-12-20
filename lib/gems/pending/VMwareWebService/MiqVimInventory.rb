@@ -45,31 +45,31 @@ class MiqVimInventory < MiqVimClientBase
     if @v2
       @propMap = dupProps(@propMap)
 
-      deleteProperty(:HostSystem, "capability.storageVMotionSupported")
-      deleteProperty(:HostSystem, "capability.vmotionWithStorageVMotionSupported")
+      deleteProperty(@propMap, :HostSystem, "capability.storageVMotionSupported")
+      deleteProperty(@propMap, :HostSystem, "capability.vmotionWithStorageVMotionSupported")
 
-      deleteProperty(:Datastore, "summary.uncommitted")
+      deleteProperty(@propMap, :Datastore, "summary.uncommitted")
 
-      deleteProperty(:VirtualMachine, "config.cpuHotAddEnabled")
-      deleteProperty(:VirtualMachine, "config.cpuHotRemoveEnabled")
-      deleteProperty(:VirtualMachine, "config.hardware.numCoresPerSocket")
-      deleteProperty(:VirtualMachine, "config.hotPlugMemoryIncrementSize")
-      deleteProperty(:VirtualMachine, "config.hotPlugMemoryLimit")
-      deleteProperty(:VirtualMachine, "config.memoryHotAddEnabled")
-      deleteProperty(:VirtualMachine, "summary.config.ftInfo.instanceUuids")
-      deleteProperty(:VirtualMachine, "summary.storage.unshared")
-      deleteProperty(:VirtualMachine, "summary.storage.committed")
+      deleteProperty(@propMap, :VirtualMachine, "config.cpuHotAddEnabled")
+      deleteProperty(@propMap, :VirtualMachine, "config.cpuHotRemoveEnabled")
+      deleteProperty(@propMap, :VirtualMachine, "config.hardware.numCoresPerSocket")
+      deleteProperty(@propMap, :VirtualMachine, "config.hotPlugMemoryIncrementSize")
+      deleteProperty(@propMap, :VirtualMachine, "config.hotPlugMemoryLimit")
+      deleteProperty(@propMap, :VirtualMachine, "config.memoryHotAddEnabled")
+      deleteProperty(@propMap, :VirtualMachine, "summary.config.ftInfo.instanceUuids")
+      deleteProperty(@propMap, :VirtualMachine, "summary.storage.unshared")
+      deleteProperty(@propMap, :VirtualMachine, "summary.storage.committed")
 
-      deleteProperty(:ClusterComputeResource, "configuration.dasConfig.admissionControlPolicy")
+      deleteProperty(@propMap, :ClusterComputeResource, "configuration.dasConfig.admissionControlPolicy")
       if @v20
-        deleteProperty(:VirtualMachine, "availableField")
-        deleteProperty(:HostSystem, "config.dateTimeInfo")
+        deleteProperty(@propMap, :VirtualMachine, "availableField")
+        deleteProperty(@propMap, :HostSystem, "config.dateTimeInfo")
       end
     else
       if @v4 && cacheScope != :cache_scope_event_monitor
         @propMap = dupProps(@propMap)
-        addProperty(:VirtualMachine, "runtime.memoryOverhead")
-        deleteProperty(:VirtualMachine, "config.hardware.numCoresPerSocket")
+        addProperty(@propMap, :VirtualMachine, "runtime.memoryOverhead")
+        deleteProperty(@propMap, :VirtualMachine, "config.hardware.numCoresPerSocket")
       end
       @propMap = @propMap.merge(PropMap4)
     end
@@ -94,16 +94,6 @@ class MiqVimInventory < MiqVimClientBase
     __connect
     @alive = true
   end # def initialize
-
-  def addProperty(key, property)
-    return if (pm = @propMap[key]).nil?
-    property.split('.').each { |p| return if pm.include?(p) }
-    @propMap[key][:props] << property
-  end
-
-  def deleteProperty(key, property)
-    @propMap[key][:props].delete(property) unless @propMap[key].nil?
-  end
 
   def self.cacheScope
     @@cacheScope

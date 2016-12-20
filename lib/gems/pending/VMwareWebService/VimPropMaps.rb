@@ -580,4 +580,14 @@ module VimPropMaps
     end
     npmap
   end
+
+  def addProperty(pmap, key, property)
+    return if (pm = pmap[key]).nil?
+    property.split('.').each { |p| return if pm.include?(p) }
+    pmap[key][:props] << property
+  end
+
+  def deleteProperty(pmap, key, property)
+    pmap[key][:props].delete(property) unless pmap[key].nil?
+  end
 end

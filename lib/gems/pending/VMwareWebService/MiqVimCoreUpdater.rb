@@ -14,7 +14,7 @@ class MiqVimCoreUpdater < MiqVimClientBase
     @propMap    = propMap || VimCoreUpdaterPropMap
     if @v4
       @propMap = dupProps(@propMap)
-      addProperty(:VirtualMachine, "runtime.memoryOverhead")
+      addProperty(@propMap, :VirtualMachine, "runtime.memoryOverhead")
     end
 
     @propCol    = @sic.propertyCollector
@@ -28,12 +28,6 @@ class MiqVimCoreUpdater < MiqVimClientBase
     connect
 
     @alive = true
-  end
-
-  def addProperty(key, property)
-    return if (pm = @propMap[key]).nil?
-    property.split('.').each { |p| return if pm.include?(p) }
-    @propMap[key][:props] << property
   end
 
   def updateSpec
