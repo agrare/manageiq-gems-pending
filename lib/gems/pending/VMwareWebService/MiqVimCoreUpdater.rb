@@ -2,11 +2,13 @@ require 'VMwareWebService/MiqVimClientBase'
 require 'VMwareWebService/MiqVimDump'
 require 'VMwareWebService/VimPropMaps'
 require 'VMwareWebService/MiqVimObjectSet'
+require 'VMwareWebService/MiqVimPropCol'
 
 class MiqVimCoreUpdater < MiqVimClientBase
   include VimPropMaps
   include MiqVimDump
   include MiqVimObjectSet
+  include MiqVimPropCol
 
   def initialize(server, username, password, propMap = nil, maxWait = 60)
     super(server, username, password)
@@ -192,61 +194,6 @@ class MiqVimCoreUpdater < MiqVimClientBase
         @alive = false
       end
     @alive
-  end
-
-  def currentSession
-    getMoProp(@sic.sessionManager, "currentSession")
-  end
-
-  def getMoProp(mo, path = nil)
-    pfSpec = VimHash.new("PropertyFilterSpec") do |pfs|
-      pfs.propSet = VimArray.new("ArrayOfPropertySpec") do |psa|
-        psa << VimHash.new("PropertySpec") do |ps|
-          ps.type = mo.vimType
-          if !path
-            ps.all = "true"
-          else
-            ps.all = "false"
-            ps.pathSet = path
-          end
-        end
-      end
-      pfs.objectSet = VimArray.new("ArrayOfObjectSpec") do |osa|
-        osa << VimHash.new("ObjectSpec") do |os|
-          os.obj = mo
-        end
-      end
-    end
-
-    oca = retrievePropertiesCompat(@propCol, pfSpec)
-
-    return nil if !oca || !oca[0] || !oca[0].propSet
-
-    oc = oca[0]
-    oc.delete('obj')
-
-    oc.propSet = [oc.propSet] unless oc.propSet.kind_of?(Array)
-    oc.propSet.each do |ps|
-      #
-      # Here, ps.name can be a property path in the form: a.b.c
-      # If that's the case, we should set the target to: propHash['a']['b']['c']
-      # creating intermediate nodes as needed.
-      #
-      h, k = hashTarget(oc, ps.name)
-      if !h[k]
-        h[k] = ps.val
-      elsif h[k].kind_of? Array
-        h[k] << ps.val
-      else
-        h[k] = VimArray.new do |arr|
-          arr << h[k]
-          arr << ps.val
-        end
-      end
-    end # oc.propSet.each
-    oc.delete('propSet')
-
-    (oc)
   end
 
   def hashTarget(baseHash, keyString, create = false)
