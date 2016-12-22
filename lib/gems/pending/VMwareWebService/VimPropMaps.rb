@@ -586,6 +586,11 @@ module VimPropMaps
         "summary.config.product.vendor",
       ]
     },
+    :ResourcePool => {
+      :props => [
+        "vm"
+      ]
+    },
     :VirtualMachine => {
       :props => [
         "summary.config.template",
