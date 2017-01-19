@@ -286,9 +286,8 @@ class MiqVimInventory < MiqVimClientBase
     !@isVirtualCenter
   end
 
-  def hashObj(type, props)
+  def hashObj(type, props, results, resultsByMor)
     type = type.to_sym if type.kind_of?(String)
-    raise "hashObj: exclusive cache lock not held" unless @cacheLock.sync_exclusive?
     raise "Unknown VIM object type: #{type}" unless (pmap = @propMap[type])
 
     return nil unless props
@@ -311,12 +310,10 @@ class MiqVimInventory < MiqVimClientBase
     end
 
     if key
-      objHash = instance_variable_get(baseName)
-      objHash[key] = props
+      results[key] = props
     end
     if mor
-      objHash = instance_variable_get("#{baseName}ByMor")
-      objHash[mor] = props
+      resultsByMor[mor] = props
     end
     props
   end
@@ -325,11 +322,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   # Add the property hash for the VIM object to the appropriate inventory hashes.
   #
-  def addObjHash(objType, objHash)
-    raise "addObjHash: exclusive cache lock not held" unless @cacheLock.sync_exclusive?
-
-    objHash = hashObj(objType, objHash)
-    objFixUp(objType, objHash)
+  def addObjHash(objType, objHash, results, resultsByMor)
+    objHash = hashObj(objType, objHash, results, resultsByMor)
+    #objFixUp(objType, objHash)
   end
 
   def objFixUp(objType, objHash)
@@ -495,6 +490,27 @@ class MiqVimInventory < MiqVimClientBase
     end
   end
 
+  def retrieveInventory_locked(klass)
+    raise "retrieveInventory_locked: cache lock not held" unless @cacheLock.sync_locked?
+
+    child_classes = VimClass.child_classes(klass.to_s)
+    morefs = child_classes.collect { |k| inventoryHash_locked[k] }.flatten.compact
+    prop_map = @propMap[klass][:props]
+
+    results = {}
+    resultsByMor = {}
+
+    $vim_log.info "MiqVimInventory.retrieveInventory_locked: loading #{klass} cache for #{@connId}"
+    ra = getMoPropMulti(morefs, prop_map)
+    ra.each do |obj|
+      addObjHash(klass, obj, results, resultsByMor)
+    end
+    $vim_log.info "MiqVimInventory.retrieveInventory_locked: loaded #{klass} cache for #{@connId}"
+
+    return results, resultsByMor
+  end
+  protected :retrieveInventory_locked
+
   ###################
   # Virtual Machines
   ###################
@@ -506,25 +522,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   def virtualMachines_locked
     raise "virtualMachines_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@virtualMachines) if @virtualMachines
 
-    $vim_log.info "MiqVimInventory.virtualMachines_locked: loading VirtualMachine cache for #{@connId}"
-    begin
-      @cacheLock.sync_lock(:EX) if (unlock = @cacheLock.sync_shared?)
-
-      ra = getMoPropMulti(inventoryHash_locked['VirtualMachine'], @propMap[:VirtualMachine][:props])
-
-      @virtualMachines      = {}
-      @virtualMachinesByMor = {}
-      ra.each do |vmObj|
-        addVirtualMachineObj(vmObj)
-      end
-    ensure
-      @cacheLock.sync_unlock if unlock
-    end
-    $vim_log.info "MiqVimInventory.virtualMachines_locked: loaded VirtualMachine cache for #{@connId}"
-
-    @virtualMachines
+    results, _ = retrieveInventory_locked(:VirtualMachine)
+    results
   end # def virtualMachines_locked
   protected :virtualMachines_locked
 
@@ -535,9 +535,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   def virtualMachinesByMor_locked
     raise "virtualMachinesByMor_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@virtualMachinesByMor) if @virtualMachinesByMor
-    virtualMachines_locked
-    @virtualMachinesByMor
+
+    _, resultsByMor = retrieveInventory_locked(:VirtualMachine)
+    resultsByMor
   end # def virtualMachinesByMor_locked
   protected :virtualMachinesByMor_locked
 
@@ -632,25 +632,8 @@ class MiqVimInventory < MiqVimClientBase
   #
   def computeResources_locked
     raise "computeResources_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@computeResources) if @computeResources
 
-    $vim_log.info "MiqVimInventory.computeResources_locked: loading ComputeResource cache for #{@connId}"
-    begin
-      @cacheLock.sync_lock(:EX) if (unlock = @cacheLock.sync_shared?)
-
-      ra = getMoPropMulti(inventoryHash_locked['ComputeResource'], @propMap[:ComputeResource][:props])
-
-      @computeResources      = {}
-      @computeResourcesByMor = {}
-      ra.each do |crObj|
-        addObjHash(:ComputeResource, crObj)
-      end
-    ensure
-      @cacheLock.sync_unlock if unlock
-    end
-    $vim_log.info "MiqVimInventory.computeResources_locked: loaded ComputeResource cache for #{@connId}"
-
-    @computeResources
+    results, _ = retrieveInventory_locked(:ComputeResource)
   end # def computeResources_locked
   protected :computeResources_locked
 
@@ -661,9 +644,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   def computeResourcesByMor_locked
     raise "computeResourcesByMor_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@computeResourcesByMor) if @computeResourcesByMor
-    computeResources_locked
-    @computeResourcesByMor
+
+    results, resultsByMor = retrieveInventory_locked(:ComputeResource)
+    resultsByMor
   end # def computeResourcesByMor_locked
   protected :computeResourcesByMor_locked
 
@@ -735,25 +718,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   def clusterComputeResources_locked
     raise "clusterComputeResources_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@clusterComputeResources) if @clusterComputeResources
 
-    $vim_log.info "MiqVimInventory.clusterComputeResources_locked: loading ClusterComputeResource cache for #{@connId}"
-    begin
-      @cacheLock.sync_lock(:EX) if (unlock = @cacheLock.sync_shared?)
-
-      ra = getMoPropMulti(inventoryHash_locked['ClusterComputeResource'], @propMap[:ClusterComputeResource][:props])
-
-      @clusterComputeResources      = {}
-      @clusterComputeResourcesByMor = {}
-      ra.each do |crObj|
-        addObjHash(:ClusterComputeResource, crObj)
-      end
-    ensure
-      @cacheLock.sync_unlock if unlock
-    end
-    $vim_log.info "MiqVimInventory.clusterComputeResources_locked: loaded ClusterComputeResource cache for #{@connId}"
-
-    @clusterComputeResources
+    results, resultsByMor = retrieveInventory_locked(:ClusterComputeResource)
+    results
   end # def clusterComputeResources_locked
   protected :clusterComputeResources_locked
 
@@ -764,9 +731,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   def clusterComputeResourcesByMor_locked
     raise "clusterComputeResourcesByMor_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@clusterComputeResourcesByMor) if @clusterComputeResourcesByMor
-    clusterComputeResources_locked
-    @clusterComputeResourcesByMor
+
+    results, resultsByMor = retrieveInventory_locked(:ClusterComputeResource)
+    resultsByMor
   end # def clusterComputeResourcesByMor_locked
   protected :clusterComputeResourcesByMor_locked
 
@@ -838,25 +805,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   def resourcePools_locked
     raise "resourcePools_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@resourcePools) if @resourcePools
 
-    $vim_log.info "MiqVimInventory.resourcePools_locked: loading ResourcePool cache for #{@connId}"
-    begin
-      @cacheLock.sync_lock(:EX) if (unlock = @cacheLock.sync_shared?)
-
-      ra = getMoPropMulti(inventoryHash_locked['ResourcePool'], @propMap[:ResourcePool][:props])
-
-      @resourcePools      = {}
-      @resourcePoolsByMor = {}
-      ra.each do |rpObj|
-        addObjHash(:ResourcePool, rpObj)
-      end
-    ensure
-      @cacheLock.sync_unlock if unlock
-    end
-    $vim_log.info "MiqVimInventory.resourcePools_locked: loaded ResourcePool cache for #{@connId}"
-
-    @resourcePools
+    results, resultsByMor = retrieveInventory_locked(:ResourcePool)
+    results
   end # def resourcePools_locked
   protected :resourcePools_locked
 
@@ -867,9 +818,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   def resourcePoolsByMor_locked
     raise "resourcePoolsByMor_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@resourcePoolsByMor) if @resourcePoolsByMor
-    resourcePools_locked
-    @resourcePoolsByMor
+
+    results, resultsByMor = retrieveInventory_locked(:ResourcePool)
+    resultsByMor
   end # def resourcePoolsByMor_locked
   protected :resourcePoolsByMor_locked
 
@@ -945,30 +896,10 @@ class MiqVimInventory < MiqVimClientBase
     #
     # Not supported in v2.0 or v2.5
     #
-    if @v2
-      @virtualApps      = {}
-      @virtualAppsByMor = {}
-    end
+    return {}, {} if @v2
 
-    return(@virtualApps) if @virtualApps
-
-    $vim_log.info "MiqVimInventory.virtualApps_locked: loading VirtualApp cache for #{@connId}"
-    begin
-      @cacheLock.sync_lock(:EX) if (unlock = @cacheLock.sync_shared?)
-
-      ra = getMoPropMulti(inventoryHash_locked['VirtualApp'], @propMap[:VirtualApp][:props])
-
-      @virtualApps      = {}
-      @virtualAppsByMor = {}
-      ra.each do |rpObj|
-        addObjHash(:VirtualApp, rpObj)
-      end
-    ensure
-      @cacheLock.sync_unlock if unlock
-    end
-    $vim_log.info "MiqVimInventory.virtualApps_locked: loaded VirtualApp cache for #{@connId}"
-
-    @virtualApps
+    results, resultsByMor = retrieveInventory_locked(:VirtualApp)
+    results
   end # def virtualApps_locked
   protected :virtualApps_locked
 
@@ -979,9 +910,13 @@ class MiqVimInventory < MiqVimClientBase
   #
   def virtualAppsByMor_locked
     raise "virtualAppsByMor_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@virtualAppsByMor) if @virtualAppsByMor
-    virtualApps_locked
-    @virtualAppsByMor
+
+    #
+    # Not supported in v2.0 or v2.5
+    #
+    return {}, {} if @v2
+    results, resultsByMor = retrieveInventory_locked(:VirtualApp)
+    resultsByMor
   end # def virtualAppsByMor_locked
   protected :virtualAppsByMor_locked
 
@@ -1053,25 +988,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   def folders_locked
     raise "folders_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@folders) if @folders
 
-    $vim_log.info "MiqVimInventory.folders_locked: loading Folder cache for #{@connId}"
-    begin
-      @cacheLock.sync_lock(:EX) if (unlock = @cacheLock.sync_shared?)
-
-      ra = getMoPropMulti(inventoryHash_locked['Folder'], @propMap[:Folder][:props])
-
-      @folders      = {}
-      @foldersByMor = {}
-      ra.each do |fObj|
-        addObjHash(:Folder, fObj)
-      end
-    ensure
-      @cacheLock.sync_unlock if unlock
-    end
-    $vim_log.info "MiqVimInventory.folders_locked: loaded Folder cache for #{@connId}"
-
-    @folders
+    results, resultsByMor = retrieveInventory_locked(:Folder)
+    results
   end # def folders_locked
   protected :folders_locked
 
@@ -1082,9 +1001,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   def foldersByMor_locked
     raise "foldersByMor_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@foldersByMor) if @foldersByMor
-    folders_locked
-    @foldersByMor
+
+    results, resultsByMor = retrieveInventory_locked(:Folder)
+    resultsByMor
   end # def foldersByMor_locked
   protected :foldersByMor_locked
 
@@ -1156,25 +1075,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   def datacenters_locked
     raise "datacenters_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@datacenters) if @datacenters
 
-    $vim_log.info "MiqVimInventory.datacenters_locked: loading Datacenter cache for #{@connId}"
-    begin
-    @cacheLock.sync_lock(:EX) if (unlock = @cacheLock.sync_shared?)
-
-    ra = getMoPropMulti(inventoryHash_locked['Datacenter'], @propMap[:Datacenter][:props])
-
-    @datacenters      = {}
-    @datacentersByMor = {}
-    ra.each do |dcObj|
-      addObjHash(:Datacenter, dcObj)
-    end
-  ensure
-    @cacheLock.sync_unlock if unlock
-  end
-    $vim_log.info "MiqVimInventory.datacenters_locked: loaded Datacenter cache for #{@connId}"
-
-    @datacenters
+    results, resultsByMor = retrieveInventory_locked(:Datacenter)
+    results
   end # def datacenters_locked
   protected :datacenters_locked
 
@@ -1185,9 +1088,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   def datacentersByMor_locked
     raise "datacentersByMor_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@datacentersByMor) if @datacentersByMor
-    datacenters_locked
-    (@datacentersByMor)
+
+    results, resultsByMor = retrieveInventory_locked(:Datacenter)
+    resultsByMor
   end # def datacentersByMor_locked
   protected :datacentersByMor_locked
 
@@ -1259,25 +1162,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   def hostSystems_locked
     raise "hostSystems_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@hostSystems) if @hostSystems
 
-    $vim_log.info "MiqVimInventory.hostSystems_locked: loading HostSystem cache for #{@connId}"
-    begin
-      @cacheLock.sync_lock(:EX) if (unlock = @cacheLock.sync_shared?)
-
-      ra = getMoPropMulti(inventoryHash_locked['HostSystem'], @propMap[:HostSystem][:props])
-
-      @hostSystems        = {}
-      @hostSystemsByMor   = {}
-      ra.each do |hsObj|
-        addHostSystemObj(hsObj)
-      end
-    ensure
-      @cacheLock.sync_unlock if unlock
-    end
-    $vim_log.info "MiqVimInventory.hostSystems_locked: loaded HostSystem cache for #{@connId}"
-
-    @hostSystems
+    results, resultsByMor = retrieveInventory_locked(:HostSystem)
+    results
   end # def hostSystems_locked
   protected :hostSystems_locked
 
@@ -1288,9 +1175,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   def hostSystemsByMor_locked
     raise "hostSystemsByMor_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@hostSystemsByMor) if @hostSystemsByMor
-    hostSystems_locked
-    @hostSystemsByMor
+
+    results, resultsByMor = retrieveInventory_locked(:HostSystem)
+    resultsByMor
   end # def hostSystemsByMor_locked
   protected :hostSystemsByMor_locked
 
@@ -1384,25 +1271,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   def dataStores_locked
     raise "dataStores_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@dataStores) if @dataStores
 
-    $vim_log.info "MiqVimInventory.dataStores_locked: loading Datastore cache for #{@connId}"
-    begin
-      @cacheLock.sync_lock(:EX) if (unlock = @cacheLock.sync_shared?)
-
-      ra = getMoPropMulti(inventoryHash_locked['Datastore'], @propMap[:Datastore][:props])
-
-      @dataStores      = {}
-      @dataStoresByMor = {}
-      ra.each do |dsObj|
-        addDataStoreObj(dsObj)
-      end
-    ensure
-      @cacheLock.sync_unlock if unlock
-    end
-    $vim_log.info "MiqVimInventory.dataStores_locked: loaded Datastore cache for #{@connId}"
-
-    @dataStores
+    results, resultsByMor = retrieveInventory_locked(:Datastore)
+    results
   end # def dataStores_locked
   protected :dataStores_locked
 
@@ -1413,9 +1284,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   def dataStoresByMor_locked
     raise "dataStoresByMor_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@dataStoresByMor) if @dataStoresByMor
-    dataStores_locked
-    @dataStoresByMor
+
+    results, resultsByMor = retrieveInventory_locked(:Datastore)
+    resultsByMor
   end # def dataStoresByMor_locked
   protected :dataStoresByMor_locked
 
@@ -1503,25 +1374,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   def dvPortgroups_locked
     raise "dvPortgroups_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@dvPortgroups) if @dvPortgroups
 
-    $vim_log.info "MiqVimInventory.dvPortgroups_locked: loading DV Portgroup cache for #{@connId}"
-    begin
-      @cacheLock.sync_lock(:EX) if (unlock = @cacheLock.sync_shared?)
-
-      ra = getMoPropMulti(inventoryHash_locked['DistributedVirtualPortgroup'], @propMap[:DistributedVirtualPortgroup][:props])
-
-      @dvPortgroups      = {}
-      @dvPortgroupsByMor = {}
-      ra.each do |dvpObj|
-        addDVPObj(dvpObj)
-      end
-    ensure
-      @cacheLock.sync_unlock if unlock
-    end
-    $vim_log.info "MiqVimInventory.dvPortgroups_locked: loaded DV Portgroup cache for #{@connId}"
-
-    @dvPortgroups
+    results, resultsByMor = retrieveInventory_locked(:DistributedVirtualPortgroup)
+    results
   end # def dvPortgroups_locked
   protected :dvPortgroups_locked
 
@@ -1532,9 +1387,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   def dvPortgroupsByMor_locked
     raise "dvPortgroupsByMor_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@dvPortgroupsByMor) if @dvPortgroupsByMor
-    dvPortgroups_locked
-    @dvPortgroupsByMor
+
+    results, resultsByMor = retrieveInventory_locked(:DistributedVirtualPortgroup)
+    resultsByMor
   end # def dvPortgroupsByMor_locked
   protected :dvPortgroupsByMor_locked
 
@@ -1591,31 +1446,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   def dvSwitches_locked
     raise "dvSwitches_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@dvSwithces) if @dvSwitches
 
-    $vim_log.info "MiqVimInventory.dvSwitches_locked: loading DV Switch cache for #{@connId}"
-
-    base_class    = 'DistributedVirtualSwitch'.freeze
-    child_classes = VimClass.child_classes(base_class)
-
-    begin
-      @cacheLock.sync_lock(:EX) if (unlock = @cacheLock.sync_shared?)
-
-      moref_array = child_classes.collect { |klass| inventoryHash_locked[klass] }.flatten.compact
-
-      ra = getMoPropMulti(moref_array, @propMap[base_class.to_sym][:props])
-
-      @dvSwitches      = {}
-      @dvSwitchesByMor = {}
-      ra.each do |dvsObj|
-        addDVSObj(dvsObj)
-      end
-    ensure
-      @cacheLock.sync_unlock if unlock
-    end
-    $vim_log.info "MiqVimInventory.dvSwitches_locked: loaded DV Switch cache for #{@connId}"
-
-    @dvSwitches
+    results, resultsByMor = retrieveInventory_locked(:DistributedVirtualSwitch)
+    results
   end # def dvSwitches_locked
   protected :dvSwitches_locked
 
@@ -1626,9 +1459,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   def dvSwitchesByMor_locked
     raise "dvSwitchesByMor_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@dvSwitchesByMor) if @dvSwitchesByMor
-    dvSwitches_locked
-    @dvSwitchesByMor
+
+    results, resultsByMor = retrieveInventory_locked(:DistributedVirtualSwitch)
+    resultsByMor
   end # def dvSwitchesByMor_locked
   protected :dvSwitchesByMor_locked
 
@@ -1674,9 +1507,6 @@ class MiqVimInventory < MiqVimClientBase
     end
   end
 
-  def addDVSObj(dvsObj)
-    addObjHash(:DistributedVirtualSwitch, dvsObj)
-  end
   #
   # For internal use.
   # Must be called with cache lock held
@@ -1684,25 +1514,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   def storagePods_locked
     raise "storagePods_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@storagePods) if @storagePods
 
-    $vim_log.info "MiqVimInventory.storagePods_locked: loading Datastore Cluster cache for #{@connId}"
-    begin
-      @cacheLock.sync_lock(:EX) if (unlock = @cacheLock.sync_shared?)
-
-      ra = getMoPropMulti(inventoryHash_locked['StoragePod'], @propMap[:StoragePod][:props])
-
-      @storagePods      = {}
-      @storagePodsByMor = {}
-      ra.each do |dsObj|
-        addStoragePodObj(dsObj)
-      end
-    ensure
-      @cacheLock.sync_unlock if unlock
-    end
-    $vim_log.info "MiqVimInventory.storagePods_locked: loaded Datastore Cluster cache for #{@connId}"
-
-    @storagePods
+    results, resultsByMor = retrieveInventory_locked(:StoragePod)
+    results
   end # def storagePods_locked
   protected :storagePods_locked
 
@@ -1713,9 +1527,9 @@ class MiqVimInventory < MiqVimClientBase
   #
   def storagePodsByMor_locked
     raise "storagePodsByMor_locked: cache lock not held" unless @cacheLock.sync_locked?
-    return(@storagePodsByMor) if @storagePodsByMor
-    storagePods_locked
-    @storagePodsByMor
+
+    results, resultsByMor = retrieveInventory_locked(:StoragePod)
+    resultsByMor
   end # def storagePodsByMor_locked
   protected :storagePodsByMor_locked
 
