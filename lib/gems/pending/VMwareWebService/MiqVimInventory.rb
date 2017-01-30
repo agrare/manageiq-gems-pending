@@ -2662,4 +2662,13 @@ class MiqVimInventory < MiqVimClientBase
 
     nObj
   end
+
+  def dump_heap
+    $vim_log.info("#{self.class.name}-#{Process.pid}: PSS: #{MiqProcess.processInfo[:proportional_set_size]}")
+    file_name = "/tmp/rubyheap-#{self.class.name}-#{Process.pid}"
+    File.open(file_name, 'w') do |f|
+      GC.start
+      ObjectSpace.dump_all(:output => f)
+    end
+  end
 end
