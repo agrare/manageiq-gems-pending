@@ -1,5 +1,4 @@
 require "handsoap"
-require 'objspace'
 require 'VMwareWebService/VimTypes'
 
 class VimService < Handsoap::Service
@@ -8,8 +7,6 @@ class VimService < Handsoap::Service
   Handsoap.http_driver = :HTTPClient
 
   def initialize(ep)
-    ObjectSpace.trace_object_allocations_start
-
     super
 
     setNameSpace('urn:vim25')
